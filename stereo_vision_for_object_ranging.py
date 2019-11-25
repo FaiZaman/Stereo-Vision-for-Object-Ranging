@@ -12,6 +12,7 @@ directory_to_cycle_left = "left-images";     # edit this if needed
 directory_to_cycle_right = "right-images";   # edit this if needed
 
 focal_length = 399.9745178222656 # in pixels
+baseline = 0.2090607502 # in meters
 
 keep_processing = True
 
@@ -55,23 +56,23 @@ def on_trackbar(val):
 # left, top, right, bottom: rectangle parameters for detection
 # colour: to draw detection rectangle in
 
-def drawPred(image, class_name, confidence, left, top, right, bottom, colour):
+def drawPred(image, class_name, confidence, left, top, right, bottom, colour, disparity):
     # Draw a bounding box and find its centre
     cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
     centre_x = math.floor((left + right)/2)
     centre_y = math.floor((top + bottom)/2)
-    
+ 
+    disparity_value = disparity_scaled[centre_y][centre_x]
+    distance = round(getDistance(baseline, disparity_value), 2)
     # construct label
-    label = '%s:%.2f' % (class_name, confidence)
+    label = '%s: %.2f' % (class_name, distance)
 
     #Display the label at the top of the bounding box
-    labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+    labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
     top = max(top, labelSize[1])
     cv2.rectangle(image, (left, top - round(1.5*labelSize[1])),
-        (left + round(1.5*labelSize[0]), top + baseLine), (255, 255, 255), cv2.FILLED)
+        (left + round(1.5*labelSize[0]), top + line), (255, 255, 255), cv2.FILLED)
     cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,0), 1)
-
-    return (centre_x, centre_y, baseLine)
 
 
 # Remove the bounding boxes with low confidence using non-maxima suppression
@@ -132,8 +133,8 @@ def getOutputsNames(net):
     return [layersNames[i[0] - 1] for i in net.getUnconnectedOutLayers()]
     
 
-#def getDisparityValue(centreX, centreY, disparity):
-
+def getDistance(baseline, disparity_value):
+    return (focal_length * baseline)/disparity_value
 
 # init YOLO CNN object detection model
 
@@ -251,10 +252,10 @@ for filename_left in left_file_list:
         # display image (scaling it to the full 0->255 range based on the number
         # of disparities in use for the stereo part)
 
-        cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8));
+        #cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8));
 
         # create a 4D tensor (OpenCV 'blob') from image frame (pixels scaled 0->1, image resized)
-        tensor = cv2.dnn.blobFromImage(imgR, 1/255, (inpWidth, inpHeight), [0,0,0], 1, crop=False)
+        tensor = cv2.dnn.blobFromImage(imgL, 1/255, (inpWidth, inpHeight), [0,0,0], 1, crop=False)
 
         # set the input to the CNN network
         net.setInput(tensor)
@@ -264,7 +265,7 @@ for filename_left in left_file_list:
 
         # remove the bounding boxes with low confidence
         confThreshold = cv2.getTrackbarPos(trackbarName, windowName) / 100
-        classIDs, confidences, boxes = postprocess(imgR, results, confThreshold, nmsThreshold)
+        classIDs, confidences, boxes = postprocess(imgL, results, confThreshold, nmsThreshold)
 
         # draw resulting detections on image
         for detected_object in range(0, len(boxes)):
@@ -274,20 +275,15 @@ for filename_left in left_file_list:
             width = box[2]
             height = box[3]
             
-            centre_baseLine = drawPred(imgR, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50))
-            centre_x = centre_baseLine[0]
-            centre_y = centre_baseLine[1]
-            baseline = centre_baseLine[2]
-            disparity_value = disparity[centre_y][centre_x]
-            print(disparity_value)
+            drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
 
         # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
         t, _ = net.getPerfProfile()
         label = 'Inference time: %.2f ms' % (t * 1000.0 / cv2.getTickFrequency())
-        cv2.putText(imgR, label, (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255))
+        cv2.putText(imgL, label, (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255))
 
         # display image
-        cv2.imshow(windowName, imgR)
+        cv2.imshow(windowName, imgL)
 
         # stop the timer and convert to ms. (to see how long processing and display takes)
         stop_t = ((cv2.getTickCount() - start_t)/cv2.getTickFrequency()) * 1000
