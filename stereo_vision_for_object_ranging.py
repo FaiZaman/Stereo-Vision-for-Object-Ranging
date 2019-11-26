@@ -57,13 +57,15 @@ def on_trackbar(val):
 # colour: to draw detection rectangle in
 
 def drawPred(image, class_name, confidence, left, top, right, bottom, colour, disparity):
-    # Draw a bounding box and find its centre
+    # Draw a bounding box and find its centre to measure distance from it
     cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
     centre_x = math.floor((left + right)/2)
     centre_y = math.floor((top + bottom)/2)
- 
+
+    # calculate the distance according to the stereo depth formula
     disparity_value = disparity_scaled[centre_y][centre_x]
-    distance = round(getDistance(baseline, disparity_value), 2)
+    distance = round(((focal_length * baseline)/disparity_value), 2)
+
     # construct label
     label = '%s: %.2f' % (class_name, distance)
 
@@ -132,9 +134,6 @@ def getOutputsNames(net):
     # Get the names of the output layers, i.e. the layers with unconnected outputs
     return [layersNames[i[0] - 1] for i in net.getUnconnectedOutLayers()]
     
-
-def getDistance(baseline, disparity_value):
-    return (focal_length * baseline)/disparity_value
 
 # init YOLO CNN object detection model
 
