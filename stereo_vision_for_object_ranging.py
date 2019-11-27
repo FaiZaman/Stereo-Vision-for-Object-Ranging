@@ -57,14 +57,19 @@ def on_trackbar(val):
 # colour: to draw detection rectangle in
 
 def drawPred(image, class_name, confidence, left, top, right, bottom, colour, disparity):
-    # Draw a bounding box and find its centre to measure distance from it
-    cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
+
+    # get centre coordinates of box
     centre_x = math.floor((left + right)/2)
     centre_y = math.floor((top + bottom)/2)
 
     # calculate the distance according to the stereo depth formula
     disparity_value = disparity_scaled[centre_y][centre_x]
+    if disparity_value == 0:
+        return -1
     distance = round(((focal_length * baseline)/disparity_value), 2)
+
+    # Draw a bounding box and find its centre to measure distance from it
+    cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
 
     # construct label
     label = '%s: %.2f' % (class_name, distance)
@@ -189,12 +194,6 @@ for filename_left in left_file_list:
     full_path_filename_left = os.path.join(full_path_directory_left, filename_left);
     full_path_filename_right = os.path.join(full_path_directory_right, filename_right);
 
-    # for sanity print out these filenames
-
-    print(full_path_filename_left);
-    print(full_path_filename_right);
-    print();
-
     # check the file is a PNG file (left) and check a correspondoning right image
     # actually exists
 
@@ -209,8 +208,6 @@ for filename_left in left_file_list:
 
         imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_COLOR)
         #cv2.imshow('right image', imgR)
-
-        print("-- files loaded successfully");
         print();
         
         # remember to convert to grayscale (as the disparity matching works on grayscale)
@@ -279,7 +276,8 @@ for filename_left in left_file_list:
             
             # collect distances for each scene object
             distance = drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
-            distances.append(distance)
+            if distance != -1:
+                distances.append(distance)
 
         # print nearest scene object
         min_distance = min(distances)
