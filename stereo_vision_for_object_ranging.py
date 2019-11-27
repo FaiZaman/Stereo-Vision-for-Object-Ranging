@@ -76,6 +76,8 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
         (left + round(1.5*labelSize[0]), top + line), (255, 255, 255), cv2.FILLED)
     cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,0), 1)
 
+    return distance
+
 
 # Remove the bounding boxes with low confidence using non-maxima suppression
 # image: image detection performed on
@@ -237,7 +239,7 @@ for filename_left in left_file_list:
         # so we fix this also using a initial threshold between 0 and max_disparity
         # as disparity=-1 means no disparity available
 
-        _, disparity = cv2.threshold(disparity,0, max_disparity * 16, cv2.THRESH_TOZERO);
+        _, disparity = cv2.threshold(disparity, 0, max_disparity * 16, cv2.THRESH_TOZERO);
         disparity_scaled = (disparity / 16.).astype(np.uint8);
 
         # crop disparity to chop out left part where there are with no disparity
@@ -266,6 +268,7 @@ for filename_left in left_file_list:
         confThreshold = cv2.getTrackbarPos(trackbarName, windowName) / 100
         classIDs, confidences, boxes = postprocess(imgL, results, confThreshold, nmsThreshold)
 
+        distances = []
         # draw resulting detections on image
         for detected_object in range(0, len(boxes)):
             box = boxes[detected_object]
@@ -274,7 +277,14 @@ for filename_left in left_file_list:
             width = box[2]
             height = box[3]
             
-            drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
+            # collect distances for each scene object
+            distance = drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
+            distances.append(distance)
+
+        # print nearest scene object
+        min_distance = min(distances)
+        print(filename_left)
+        print(filename_right + " : nearest detected scene object (" + str(min_distance) + "m)")
 
         # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
         t, _ = net.getPerfProfile()
