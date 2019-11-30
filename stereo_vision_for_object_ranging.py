@@ -7,7 +7,7 @@ import argparse
 import math
 import numpy as np
 
-master_path_to_dataset = "D:/University Work/Year 3/Software, Systems, & Applications III/Computer Vision/Stereo Vision for Object Distancing/TTBB-durham-02-10-17-sub10";
+master_path_to_dataset = "TTBB-durham-02-10-17-sub10/";
 directory_to_cycle_left = "left-images";     # edit this if needed
 directory_to_cycle_right = "right-images";   # edit this if needed
 
@@ -280,9 +280,13 @@ for filename_left in left_file_list:
                 distances.append(distance)
 
         # print nearest scene object
-        min_distance = min(distances)
         print(filename_left)
-        print(filename_right + " : nearest detected scene object (" + str(min_distance) + "m)")
+        if distances != []:
+            min_distance = min(distances)
+            print(filename_right + " : nearest detected scene object (" + str(min_distance) + "m)")
+        else:
+            print(filename_right + " : nearest detected scene object (" + "0" + "m)")
+
 
         # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
         t, _ = net.getPerfProfile()
