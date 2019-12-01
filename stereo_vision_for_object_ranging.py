@@ -58,23 +58,27 @@ def on_trackbar(val):
 
 def drawPred(image, class_name, confidence, left, top, right, bottom, colour, disparity):
 
-    # get centre coordinates of box
+    # Draw a bounding box and find its centre
+    cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
     centre_x = math.floor((left + right)/2)
     centre_y = math.floor((top + bottom)/2)
 
     # calculate the distance according to the stereo depth formula
     disparity_value = disparity_scaled[centre_y][centre_x]
     if disparity_value == 0:
+        label = '%s' % (class_name)
+        labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        top = max(top, labelSize[1])
+        cv2.rectangle(image, (left, top - round(1.5*labelSize[1])),
+            (left + round(1.5*labelSize[0]), top + line), (255, 255, 255), cv2.FILLED)
+        cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,0), 1)
         return -1
     distance = round(((focal_length * baseline)/disparity_value), 2)
-
-    # Draw a bounding box and find its centre to measure distance from it
-    cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
 
     # construct label
     label = '%s: %.2f%s' % (class_name, distance, "m")
 
-    #Display the label at the top of the bounding box
+    # Display the label at the top of the bounding box
     labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
     top = max(top, labelSize[1])
     cv2.rectangle(image, (left, top - round(1.5*labelSize[1])),
