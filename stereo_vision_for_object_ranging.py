@@ -72,7 +72,7 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
     cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
 
     # construct label
-    label = '%s: %.2f' % (class_name, distance)
+    label = '%s: %.2f%s' % (class_name, distance, "m")
 
     #Display the label at the top of the bounding box
     labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
@@ -209,12 +209,17 @@ for filename_left in left_file_list:
         imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_COLOR)
         #cv2.imshow('right image', imgR)
         print();
+
+        # crop the main car out using bitwise and to stop it from being detected in multiple images
+        cropped_car_img = cv2.imread("cropped_car.png", cv2.IMREAD_COLOR)
+        cropped_imgL = cv2.bitwise_and(imgL, cropped_car_img)
+        cropped_imgR = cv2.bitwise_and(imgR, cropped_car_img)
         
         # remember to convert to grayscale (as the disparity matching works on grayscale)
         # N.B. need to do for both as both are 3-channel images
 
-        grayL = cv2.cvtColor(imgL,cv2.COLOR_BGR2GRAY);
-        grayR = cv2.cvtColor(imgR,cv2.COLOR_BGR2GRAY);
+        grayL = cv2.cvtColor(cropped_imgL, cv2.COLOR_BGR2GRAY);
+        grayR = cv2.cvtColor(cropped_imgR, cv2.COLOR_BGR2GRAY);
         
         grayL = np.power(grayL, 0.75).astype('uint8');
         grayR = np.power(grayR, 0.75).astype('uint8');
@@ -253,7 +258,7 @@ for filename_left in left_file_list:
         #cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8));
 
         # create a 4D tensor (OpenCV 'blob') from image frame (pixels scaled 0->1, image resized)
-        tensor = cv2.dnn.blobFromImage(imgL, 1/255, (inpWidth, inpHeight), [0,0,0], 1, crop=False)
+        tensor = cv2.dnn.blobFromImage(cropped_imgL, 1/255, (inpWidth, inpHeight), [0,0,0], 1, crop=False)
 
         # set the input to the CNN network
         net.setInput(tensor)
@@ -263,7 +268,7 @@ for filename_left in left_file_list:
 
         # remove the bounding boxes with low confidence
         confThreshold = cv2.getTrackbarPos(trackbarName, windowName) / 100
-        classIDs, confidences, boxes = postprocess(imgL, results, confThreshold, nmsThreshold)
+        classIDs, confidences, boxes = postprocess(cropped_imgL, results, confThreshold, nmsThreshold)
 
         distances = []
         # draw resulting detections on image
@@ -294,6 +299,7 @@ for filename_left in left_file_list:
         cv2.putText(imgL, label, (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255))
 
         # display image
+
         cv2.imshow(windowName, imgL)
 
         # stop the timer and convert to ms. (to see how long processing and display takes)
