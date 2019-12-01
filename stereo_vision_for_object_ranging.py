@@ -51,7 +51,89 @@ stereoProcessor = cv2.StereoSGBM_create(0, max_disparity, 21);
 def on_trackbar(val):
     return
 
+def ORB(left, top, right, bottom):
 
+    detected = False
+
+    feature_object = cv2.ORB_create(800)
+
+    FLANN_INDEX_LSH = 6
+    index_params= dict(algorithm = FLANN_INDEX_LSH,
+                    table_number = 6, # 12
+                    key_size = 12,     # 20
+                    multi_probe_level = 1) #2
+
+    (major, minor, _) = cv2.__version__.split(".")
+    if ((int(major) >= 3) and (int(minor) >= 1)):
+        search_params = dict(checks=50)   # or pass empty dictionary
+        matcher = cv2.FlannBasedMatcher(index_params,search_params)
+    else:
+        matcher = cv2.BFMatcher()
+
+    # start a timer (to see how long processing and display takes)
+    start_t = cv2.getTickCount()
+
+    # convert to grayscale
+    greyL = cv2.cvtColor(imgL, cv2.COLOR_BGR2GRAY)
+    greyR = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
+
+    # obtain yolo box as image 
+    #crop = testImg[boxes[0][1]:boxes[0][1] + boxes[1][1],boxes[0][0]:boxes[0][0] + boxes[1][0]].copy()
+    detected_box = imgL[top:left, bottom:right].copy() # not sure about this
+    h, w, c = detected_box.shape
+
+    if h > 0 and w > 0:
+
+        detected = True
+
+        # detect features and compute associated descriptor vectors
+        keypoints_cropped_region, descriptors_cropped_region = feature_object.detectAndCompute(detected_box, None)
+
+        # display keypoints on the image
+        cropped_region_with_features = cv2.drawKeypoints(detected_box, keypoints_cropped_region, None, (255,0,0), 4)
+
+        # display features on cropped region
+        cv2.imshow("Selected features", cropped_region_with_features)
+
+    if detected:
+
+        # detect and match features from current image
+        keypoints, descriptors = feature_object.detectAndCompute(greyL, None)
+
+        matches = []
+        if (len(descriptors) > 0):
+                #flann.clear()
+                matches = matcher.knnMatch(descriptors_cropped_region, trainDescriptors = descriptors, k = 2)
+
+            # Need to isolate only good matches, so create a mask
+
+            # matchesMask = [[0,0] for i in range(len(matches))]
+
+            # perform a first match to second match ratio test as original SIFT paper (known as Lowe's ration)
+            # using the matching distances of the first and second matches
+
+        good_matches = []
+        try:
+            for (m,n) in matches:
+                if m.distance < 0.7*n.distance:
+                    good_matches.append(m)
+        except ValueError:
+            print("caught error - no matches from current frame")
+
+        # check we have enough good matches
+
+        if len(good_matches) > MIN_MATCH_COUNT:
+
+            # construct two sets of points - source (the selected object/region points), destination (the current frame points)
+
+            source_pts = np.float32([ keypoints_cropped_region[m.queryIdx].pt for m in good_matches ]).reshape(-1,1,2)
+            destination_pts = np.float32([ keypoints[m.trainIdx].pt for m in good_matches ]).reshape(-1,1,2)
+
+
+
+
+
+    
 # Draw the predicted bounding box on the specified image
 # image: image detection performed on
 # class_name: string name of detected object_detection
@@ -62,6 +144,7 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
 
     # Draw a bounding box and find its centre
     cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
+    ORB(left, top, right, bottom)
     centre_x = math.floor((left + right)/2)
     centre_y = math.floor((top + bottom)/2)
 
