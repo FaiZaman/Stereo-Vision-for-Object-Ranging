@@ -14,6 +14,8 @@ directory_to_cycle_right = "right-images";   # edit this if needed
 focal_length = 399.9745178222656 # in pixels
 baseline = 0.2090607502 # in meters
 
+vehicles = ["person", "car", "bicycle", "truck", "motorbike", "aeroplane", "bus", "train", "truck", "boat"]
+
 keep_processing = True
 
 # parse command line arguments for camera ID or video file
@@ -277,16 +279,17 @@ for filename_left in left_file_list:
         distances = []
         # draw resulting detections on image
         for detected_object in range(0, len(boxes)):
-            box = boxes[detected_object]
-            left = box[0]
-            top = box[1]
-            width = box[2]
-            height = box[3]
-            
-            # collect distances for each scene object
-            distance = drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
-            if distance != -1:
-                distances.append(distance)
+            if classes[classIDs[detected_object]] in vehicles:
+                box = boxes[detected_object]
+                left = box[0]
+                top = box[1]
+                width = box[2]
+                height = box[3]
+                
+                # collect distances for each scene object
+                distance = drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
+                if distance != -1:
+                    distances.append(distance)
 
         # print nearest scene object
         print(filename_left)
