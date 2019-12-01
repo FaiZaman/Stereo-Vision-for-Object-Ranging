@@ -70,17 +70,14 @@ def ORB(left, top, right, bottom):
     else:
         matcher = cv2.BFMatcher()
 
-    # start a timer (to see how long processing and display takes)
-    start_t = cv2.getTickCount()
-
     # convert to grayscale
     greyL = cv2.cvtColor(imgL, cv2.COLOR_BGR2GRAY)
     greyR = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
 
     # obtain yolo box as image 
     #crop = testImg[boxes[0][1]:boxes[0][1] + boxes[1][1],boxes[0][0]:boxes[0][0] + boxes[1][0]].copy()
-    detected_box = imgL[top:left, bottom:right].copy() # not sure about this
-    h, w, c = detected_box.shape
+    detected_box = greyL[top:bottom, left:right].copy() # not sure about this
+    h, w = detected_box.shape
 
     if h > 0 and w > 0:
 
@@ -98,42 +95,30 @@ def ORB(left, top, right, bottom):
     if detected:
 
         # detect and match features from current image
-        keypoints, descriptors = feature_object.detectAndCompute(greyL, None)
+        keypoints, descriptors = feature_object.detectAndCompute(greyR, None)
 
         matches = []
         if (len(descriptors) > 0):
-                #flann.clear()
                 matches = matcher.knnMatch(descriptors_cropped_region, trainDescriptors = descriptors, k = 2)
 
-            # Need to isolate only good matches, so create a mask
-
-            # matchesMask = [[0,0] for i in range(len(matches))]
-
-            # perform a first match to second match ratio test as original SIFT paper (known as Lowe's ration)
-            # using the matching distances of the first and second matches
+        # Need to isolate only good matches, so create a mask
+        # matchesMask = [[0,0] for i in range(len(matches))]
+        # perform a first match to second match ratio test as original SIFT paper (known as Lowe's ration)
+        # using the matching distances of the first and second matches
 
         good_matches = []
         try:
-            for (m,n) in matches:
-                if m.distance < 0.7*n.distance:
+            for (m, n) in matches:
+                if m.distance < 0.7 * n.distance:
                     good_matches.append(m)
         except ValueError:
             print("caught error - no matches from current frame")
 
-        # check we have enough good matches
-
-        if len(good_matches) > MIN_MATCH_COUNT:
-
-            # construct two sets of points - source (the selected object/region points), destination (the current frame points)
-
-            source_pts = np.float32([ keypoints_cropped_region[m.queryIdx].pt for m in good_matches ]).reshape(-1,1,2)
-            destination_pts = np.float32([ keypoints[m.trainIdx].pt for m in good_matches ]).reshape(-1,1,2)
+        draw_params = dict(matchColor = (0,255,0), singlePointColor = (255,0,0), flags = 0)
+        display_matches = cv2.drawMatches(detected_box, keypoints_cropped_region, imgR, keypoints, good_matches, None, **draw_params)
+        cv2.imshow("Feature Matches", display_matches)
 
 
-
-
-
-    
 # Draw the predicted bounding box on the specified image
 # image: image detection performed on
 # class_name: string name of detected object_detection
@@ -144,7 +129,6 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
 
     # Draw a bounding box and find its centre
     cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
-    ORB(left, top, right, bottom)
     centre_x = math.floor((left + right)/2)
     centre_y = math.floor((top + bottom)/2)
 
@@ -170,6 +154,7 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
         (left + round(1.5*labelSize[0]), top + line), (255, 255, 255), cv2.FILLED)
     cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,0), 1)
 
+    ORB(left, top, right, bottom)
     return distance
 
 
