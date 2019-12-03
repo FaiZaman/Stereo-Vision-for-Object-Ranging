@@ -6,6 +6,7 @@ import sys
 import argparse
 import math
 import numpy as np
+from sklearn.preprocessing import normalize
 
 master_path_to_dataset = "TTBB-durham-02-10-17-sub10/";
 directory_to_cycle_left = "left-images";     # edit this if needed
@@ -46,6 +47,33 @@ left_file_list = sorted(os.listdir(full_path_directory_left));
 
 max_disparity = 128;
 stereoProcessor = cv2.StereoSGBM_create(0, max_disparity, 21);
+window_size = 3
+
+left_matcher = cv2.StereoSGBM_create(
+    minDisparity = 0,
+    numDisparities = 160,             # max_disp has to be dividable by 16 f. E. HH 192, 256
+    blockSize = 5,
+    P1 = 8 * 3 * window_size ** 2,    # wsize default 3; 5; 7 for SGBM reduced size image; 15 for SGBM full size image (1300px and above); 5 Works nicely
+    P2 = 32 * 3 * window_size ** 2,
+    disp12MaxDiff = 1,
+    uniquenessRatio = 15,
+    speckleWindowSize = 0,
+    speckleRange = 2,
+    preFilterCap = 63,
+    mode = cv2.STEREO_SGBM_MODE_SGBM_3WAY
+)
+
+right_matcher = cv2.ximgproc.createRightMatcher(left_matcher)
+
+# WLS Filter params
+lmbda = 80000
+sigma = 1.2
+visual_multiplier = 1.0
+ 
+# apply WLS filter
+wls_filter = cv2.ximgproc.createDisparityWLSFilter(matcher_left=left_matcher)
+wls_filter.setLambda(lmbda)
+wls_filter.setSigmaColor(sigma)
 
 # dummy on trackbar callback function
 def on_trackbar(val):
@@ -126,18 +154,18 @@ def ORB(left, top, right, bottom):
 # left, top, right, bottom: rectangle parameters for detection
 # colour: to draw detection rectangle in
 
-def drawPred(image, class_name, confidence, left, top, right, bottom, colour, disparity):
+def drawPred(image, class_name, confidence, left, top, right, bottom, colour, disparity_img):
 
     # Draw a bounding box
     cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
     centre_x = math.floor((left + right)/2)
     centre_y = math.floor((top + bottom)/2)
 
-    if classes[classIDs[detected_object]] != "person":
-        centre_y = centre_y + math.floor(bottom/4)
+    #if classes[classIDs[detected_object]] != "person":
+     #   centre_y = centre_y + math.floor(bottom/4)
 
     # calculate the distance according to the stereo depth formula
-    disparity_value = disparity_scaled[centre_y][centre_x]
+    disparity_value = disparity_img[centre_y][centre_x]
     if disparity_value == 0:
         label = '%s' % (class_name)
         labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
@@ -302,12 +330,24 @@ for filename_left in left_file_list:
         grayL = np.power(grayL, 0.75).astype('uint8');
         grayR = np.power(grayR, 0.75).astype('uint8');
 
+        # blur with gaussian filter
+        blurredL = cv2.GaussianBlur(grayL, (5, 5), 1)
+        blurredR = cv2.GaussianBlur(grayR, (5, 5), 1)
+
         # compute disparity image from undistorted and rectified stereo images
         # that we have loaded
         # (which for reasons best known to the OpenCV developers is returned scaled by 16)
 
-        disparity = stereoProcessor.compute(grayL, grayR);
+        disparity = stereoProcessor.compute(blurredL, blurredR);
+        '''disparity = left_matcher.compute(blurredL, blurredR)  # .astype(np.float32)/16
+        disparity = right_matcher.compute(blurredR, blurredL)  # .astype(np.float32)/16
+        disparity = np.int16(disparity)
+        disparity = np.int16(disparity)
+        filteredDisparity = wls_filter.filter(disparity, blurredL, None, disparity)  # important to put "imgL" here!!!
 
+        filteredDisparity = cv2.normalize(src=filteredDisparity, dst=filteredDisparity, beta=0, alpha=255, norm_type=cv2.NORM_MINMAX);
+        filteredDisparity = np.uint8(filteredDisparity)'''
+        
         # filter out noise and speckles (adjust parameters as needed)
 
         dispNoiseFilter = 5; # increase for more agressive filtering
@@ -369,7 +409,7 @@ for filename_left in left_file_list:
             min_distance = min(distances)
             print(filename_right + " : nearest detected scene object (" + str(min_distance) + "m)")
         else:
-            print(filename_right + " : nearest detected scene object (" + "0" + "m)")
+            print(filename_right + " : nearest detected scene object (" + "0m)")
 
 
         # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
