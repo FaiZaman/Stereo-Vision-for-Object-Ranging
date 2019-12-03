@@ -14,7 +14,7 @@ directory_to_cycle_right = "right-images";   # edit this if needed
 focal_length = 399.9745178222656 # in pixels
 baseline = 0.2090607502 # in meters
 
-vehicles = ["person", "car", "bicycle", "truck", "motorbike", "aeroplane", "bus", "train", "truck", "boat"]
+vehicles = ["person", "car", "bicycle", "truck", "motorbike", "aeroplane", "bus", "truck", "boat"]
 
 keep_processing = True
 
@@ -111,6 +111,7 @@ def ORB(left, top, right, bottom):
             for (m, n) in matches:
                 if m.distance < 0.7 * n.distance:
                     good_matches.append(m)
+                    #queryIdx trainIdx
         except ValueError:
             print("caught error - no matches from current frame")
 
@@ -127,10 +128,13 @@ def ORB(left, top, right, bottom):
 
 def drawPred(image, class_name, confidence, left, top, right, bottom, colour, disparity):
 
-    # Draw a bounding box and find its centre
+    # Draw a bounding box
     cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
     centre_x = math.floor((left + right)/2)
     centre_y = math.floor((top + bottom)/2)
+
+    if classes[classIDs[detected_object]] != "person":
+        centre_y = centre_y + math.floor(bottom/4)
 
     # calculate the distance according to the stereo depth formula
     disparity_value = disparity_scaled[centre_y][centre_x]
