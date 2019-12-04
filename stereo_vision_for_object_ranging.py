@@ -157,12 +157,18 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
     centre_x = math.floor((left + right)/2)
     centre_y = math.floor((top + bottom)/2)
 
-    #if classes[classIDs[detected_object]] != "person":
+    # crop the disparity image and take the median 
+    width = right - left
+    height = bottom - top
+    cropped_disparity = disparity_img[top + int(height/3):bottom - int(height/3), left + int(width/3):right - int(width/3)]
+    median_disparity = np.median(cropped_disparity)
+
+    #if classes[classIDs[detected_object]] != "person": take bottom half of vehicle
      #   centre_y = centre_y + math.floor(bottom/4)
 
     # calculate the distance according to the stereo depth formula
     disparity_value = disparity_img[centre_y][centre_x]
-    if disparity_value == 0:
+    if median_disparity == 0:
         label = '%s' % (class_name)
         labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         top = max(top, labelSize[1])
@@ -170,7 +176,7 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
             (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
         cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
         return -1
-    distance = round(((focal_length * baseline)/disparity_value), 2)
+    distance = round(((focal_length * baseline)/median_disparity), 2)
 
     # construct label
     label = '%s: %.2f%s' % (class_name, distance, "m")
@@ -182,7 +188,6 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
         (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
     cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
 
-    #ORB(left, top, right, bottom)
     return distance
 
 
@@ -320,9 +325,6 @@ for filename_left in left_file_list:
 
         grayL = cv2.cvtColor(cropped_imgL, cv2.COLOR_BGR2GRAY);
         grayR = cv2.cvtColor(cropped_imgR, cv2.COLOR_BGR2GRAY);
-        
-        grayL = np.power(grayL, 0.75).astype('uint8');
-        grayR = np.power(grayR, 0.75).astype('uint8');
 
         # compute disparity image from undistorted and rectified stereo images
         # that we have loaded
