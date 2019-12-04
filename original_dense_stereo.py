@@ -6,7 +6,6 @@ import sys
 import argparse
 import math
 import numpy as np
-from sklearn.preprocessing import normalize
 
 master_path_to_dataset = "TTBB-durham-02-10-17-sub10/";
 directory_to_cycle_left = "left-images";     # edit this if needed
@@ -14,8 +13,6 @@ directory_to_cycle_right = "right-images";   # edit this if needed
 
 focal_length = 399.9745178222656 # in pixels
 baseline = 0.2090607502 # in meters
-
-vehicles = ["person", "car", "bicycle", "truck", "motorbike", "aeroplane", "bus", "truck", "boat"]
 
 keep_processing = True
 
@@ -47,101 +44,10 @@ left_file_list = sorted(os.listdir(full_path_directory_left));
 
 max_disparity = 128;
 stereoProcessor = cv2.StereoSGBM_create(0, max_disparity, 21);
-window_size = 3
 
-left_matcher = cv2.StereoSGBM_create(
-    minDisparity = 0,
-    numDisparities = 160,             # max_disp has to be dividable by 16 f. E. HH 192, 256
-    blockSize = 5,
-    P1 = 8 * 3 * window_size ** 2,    # wsize default 3; 5; 7 for SGBM reduced size image; 15 for SGBM full size image (1300px and above); 5 Works nicely
-    P2 = 32 * 3 * window_size ** 2,
-    disp12MaxDiff = 1,
-    uniquenessRatio = 15,
-    speckleWindowSize = 0,
-    speckleRange = 2,
-    preFilterCap = 63,
-    mode = cv2.STEREO_SGBM_MODE_SGBM_3WAY
-)
-
-right_matcher = cv2.ximgproc.createRightMatcher(left_matcher)
-
-# WLS Filter params
-lmbda = 80000
-sigma = 1.2
-visual_multiplier = 1.0
- 
-# apply WLS filter
-wls_filter = cv2.ximgproc.createDisparityWLSFilter(matcher_left=left_matcher)
-wls_filter.setLambda(lmbda)
-wls_filter.setSigmaColor(sigma)
-
-
-def ORB(left, top, right, bottom):
-
-    detected = False
-
-    feature_object = cv2.ORB_create(800)
-
-    FLANN_INDEX_LSH = 6
-    index_params= dict(algorithm = FLANN_INDEX_LSH,
-                    table_number = 6, # 12
-                    key_size = 12,     # 20
-                    multi_probe_level = 1) #2
-
-    (major, minor, _) = cv2.__version__.split(".")
-    if ((int(major) >= 3) and (int(minor) >= 1)):
-        search_params = dict(checks=50)   # or pass empty dictionary
-        matcher = cv2.FlannBasedMatcher(index_params,search_params)
-    else:
-        matcher = cv2.BFMatcher()
-
-    # convert to grayscale
-    greyL = cv2.cvtColor(imgL, cv2.COLOR_BGR2GRAY)
-    greyR = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
-
-    # obtain yolo box as image 
-    detected_box = greyL[top:bottom, left:right].copy() # not sure about this
-    h, w = detected_box.shape
-
-    if h > 0 and w > 0:
-
-        detected = True
-
-        # detect features and compute associated descriptor vectors
-        keypoints_cropped_region, descriptors_cropped_region = feature_object.detectAndCompute(detected_box, None)
-
-        # display keypoints on the image
-        cropped_region_with_features = cv2.drawKeypoints(detected_box, keypoints_cropped_region, None, (255,0,0), 4)
-
-        # display features on cropped region
-        cv2.imshow("Selected features", cropped_region_with_features)
-
-    if detected:
-
-        # detect and match features from current image
-        keypoints, descriptors = feature_object.detectAndCompute(greyR, None)
-
-        matches = []
-        if (len(descriptors) > 0):
-                matches = matcher.knnMatch(descriptors_cropped_region, trainDescriptors = descriptors, k = 2)
-
-        # Need to isolate only good matches, so create a mask
-        # matchesMask = [[0,0] for i in range(len(matches))]
-        # perform a first match to second match ratio test as original SIFT paper (known as Lowe's ration)
-        # using the matching distances of the first and second matches
-
-        good_matches = []
-        try:
-            for (m, n) in matches:
-                if m.distance < 0.7 * n.distance:
-                    good_matches.append(m)
-                    #queryIdx trainIdx
-        except ValueError:
-            print("caught error - no matches from current frame")
-
-        draw_params = dict(matchColor = (0,255,0), singlePointColor = (255,0,0), flags = 0)
-        display_matches = cv2.drawMatches(detected_box, keypoints_cropped_region, imgR, keypoints, good_matches, None, **draw_params)
-        cv2.imshow("Feature Matches", display_matches)
+# dummy on trackbar callback function
+def on_trackbar(val):
+    return
 
 
 # Draw the predicted bounding box on the specified image
@@ -150,39 +56,31 @@ def ORB(left, top, right, bottom):
 # left, top, right, bottom: rectangle parameters for detection
 # colour: to draw detection rectangle in
 
-def drawPred(image, class_name, confidence, left, top, right, bottom, colour, disparity_img):
+def drawPred(image, class_name, confidence, left, top, right, bottom, colour, disparity):
 
-    # Draw a bounding box
-    cv2.rectangle(image, (left, top), (right, bottom), colour, 2)
+    # get centre coordinates of box
     centre_x = math.floor((left + right)/2)
     centre_y = math.floor((top + bottom)/2)
 
-    #if classes[classIDs[detected_object]] != "person":
-     #   centre_y = centre_y + math.floor(bottom/4)
-
     # calculate the distance according to the stereo depth formula
-    disparity_value = disparity_img[centre_y][centre_x]
+    disparity_value = disparity_scaled[centre_y][centre_x]
     if disparity_value == 0:
-        label = '%s' % (class_name)
-        labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        top = max(top, labelSize[1])
-        cv2.rectangle(image, (left, top - labelSize[1]),
-            (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
-        cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
         return -1
     distance = round(((focal_length * baseline)/disparity_value), 2)
 
-    # construct label
-    label = '%s: %.2f%s' % (class_name, distance, "m")
+    # Draw a bounding box and find its centre to measure distance from it
+    cv2.rectangle(image, (left, top), (right, bottom), colour, 3)
 
-    # Display the label at the top of the bounding box
+    # construct label
+    label = '%s: %.2f' % (class_name, distance)
+
+    #Display the label at the top of the bounding box
     labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
     top = max(top, labelSize[1])
-    cv2.rectangle(image, (left, top - labelSize[1]),
-        (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
-    cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
+    cv2.rectangle(image, (left, top - round(1.5*labelSize[1])),
+        (left + round(1.5*labelSize[0]), top + line), (255, 255, 255), cv2.FILLED)
+    cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,0), 1)
 
-    #ORB(left, top, right, bottom)
     return distance
 
 
@@ -271,8 +169,10 @@ net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
 
 # define display window name + trackbar
 
-windowName = 'Stereo Vision for Object Ranging'
+windowName = 'Stereo Vision for Object Distancing: ' + args.weights_file
 cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
+trackbarName = 'reporting confidence > (x 0.01)'
+cv2.createTrackbar(trackbarName, windowName , 0, 100, on_trackbar)
 
 # loop through all the images to play as video
 
@@ -309,17 +209,12 @@ for filename_left in left_file_list:
         imgR = cv2.imread(full_path_filename_right, cv2.IMREAD_COLOR)
         #cv2.imshow('right image', imgR)
         print();
-
-        # crop the main car out using bitwise and to stop it from being detected in multiple images
-        cropped_car_img = cv2.imread("cropped_car.png", cv2.IMREAD_COLOR)
-        cropped_imgL = cv2.bitwise_and(imgL, cropped_car_img)
-        cropped_imgR = cv2.bitwise_and(imgR, cropped_car_img)
         
         # remember to convert to grayscale (as the disparity matching works on grayscale)
         # N.B. need to do for both as both are 3-channel images
 
-        grayL = cv2.cvtColor(cropped_imgL, cv2.COLOR_BGR2GRAY);
-        grayR = cv2.cvtColor(cropped_imgR, cv2.COLOR_BGR2GRAY);
+        grayL = cv2.cvtColor(imgL,cv2.COLOR_BGR2GRAY);
+        grayR = cv2.cvtColor(imgR,cv2.COLOR_BGR2GRAY);
         
         grayL = np.power(grayL, 0.75).astype('uint8');
         grayR = np.power(grayR, 0.75).astype('uint8');
@@ -329,15 +224,7 @@ for filename_left in left_file_list:
         # (which for reasons best known to the OpenCV developers is returned scaled by 16)
 
         disparity = stereoProcessor.compute(grayL, grayR);
-        '''disparity = left_matcher.compute(blurredL, blurredR)  # .astype(np.float32)/16
-        disparity = right_matcher.compute(blurredR, blurredL)  # .astype(np.float32)/16
-        disparity = np.int16(disparity)
-        disparity = np.int16(disparity)
-        filteredDisparity = wls_filter.filter(disparity, blurredL, None, disparity)  # important to put "imgL" here!!!
 
-        filteredDisparity = cv2.normalize(src=filteredDisparity, dst=filteredDisparity, beta=0, alpha=255, norm_type=cv2.NORM_MINMAX);
-        filteredDisparity = np.uint8(filteredDisparity)'''
-        
         # filter out noise and speckles (adjust parameters as needed)
 
         dispNoiseFilter = 5; # increase for more agressive filtering
@@ -366,7 +253,7 @@ for filename_left in left_file_list:
         #cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8));
 
         # create a 4D tensor (OpenCV 'blob') from image frame (pixels scaled 0->1, image resized)
-        tensor = cv2.dnn.blobFromImage(cropped_imgL, 1/255, (inpWidth, inpHeight), [0,0,0], 1, crop=False)
+        tensor = cv2.dnn.blobFromImage(imgL, 1/255, (inpWidth, inpHeight), [0,0,0], 1, crop=False)
 
         # set the input to the CNN network
         net.setInput(tensor)
@@ -375,22 +262,22 @@ for filename_left in left_file_list:
         results = net.forward(output_layer_names)
 
         # remove the bounding boxes with low confidence
-        classIDs, confidences, boxes = postprocess(cropped_imgL, results, confThreshold, nmsThreshold)
+        confThreshold = cv2.getTrackbarPos(trackbarName, windowName) / 100
+        classIDs, confidences, boxes = postprocess(imgL, results, confThreshold, nmsThreshold)
 
         distances = []
         # draw resulting detections on image
         for detected_object in range(0, len(boxes)):
-            if classes[classIDs[detected_object]] in vehicles:
-                box = boxes[detected_object]
-                left = box[0]
-                top = box[1]
-                width = box[2]
-                height = box[3]
-                
-                # collect distances for each scene object
-                distance = drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
-                if distance != -1:
-                    distances.append(distance)
+            box = boxes[detected_object]
+            left = box[0]
+            top = box[1]
+            width = box[2]
+            height = box[3]
+            
+            # collect distances for each scene object
+            distance = drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
+            if distance != -1:
+                distances.append(distance)
 
         # print nearest scene object
         print(filename_left)
@@ -398,7 +285,7 @@ for filename_left in left_file_list:
             min_distance = min(distances)
             print(filename_right + " : nearest detected scene object (" + str(min_distance) + "m)")
         else:
-            print(filename_right + " : nearest detected scene object (" + "0m)")
+            print(filename_right + " : nearest detected scene object (" + "0" + "m)")
 
 
         # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
@@ -407,7 +294,6 @@ for filename_left in left_file_list:
         cv2.putText(imgL, label, (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255))
 
         # display image
-
         cv2.imshow(windowName, imgL)
 
         # stop the timer and convert to ms. (to see how long processing and display takes)
