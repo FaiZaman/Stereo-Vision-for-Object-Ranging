@@ -29,7 +29,7 @@ args = parser.parse_args()
 # set this to a file timestamp to start from (empty is first example - outside lab)
 # e.g. set to 1506943191.487683 for the end of the Bailey, just as the vehicle turns
 
-skip_forward_file_pattern = ""; # set to timestamp to skip forward to
+skip_forward_file_pattern = "1506942604.475373_L.png"; # set to timestamp to skip forward to
 
 crop_disparity = False; # display full or cropped disparity image
 pause_playback = False; # pause until key press after each image
@@ -74,6 +74,18 @@ visual_multiplier = 1.0
 wls_filter = cv2.ximgproc.createDisparityWLSFilter(matcher_left=left_matcher)
 wls_filter.setLambda(lmbda)
 wls_filter.setSigmaColor(sigma)
+
+def WLS_filter(greyL, greyR):
+
+    disparity_left = left_matcher.compute(greyL, greyR)  # .astype(np.float32)/16
+    disparity_right = right_matcher.compute(greyR, greyL)  # .astype(np.float32)/16
+    disparity_left = np.int16(disparity_left)
+    disparity_right = np.int16(disparity_right)
+    filteredDisparity = wls_filter.filter(disparity_left, greyL, None, disparity_right)  # important to put "imgL" here!!!
+
+    filteredDisparity = cv2.normalize(src=filteredDisparity, dst=filteredDisparity, beta=0, alpha=255, norm_type=cv2.NORM_MINMAX);
+    filteredDisparity = np.uint8(filteredDisparity)
+    return filteredDisparity
 
 
 def ORB(left, top, right, bottom):
@@ -326,19 +338,20 @@ for filename_left in left_file_list:
         grayL = cv2.cvtColor(cropped_imgL, cv2.COLOR_BGR2GRAY);
         grayR = cv2.cvtColor(cropped_imgR, cv2.COLOR_BGR2GRAY);
 
+        #disparity = WLS_filter(grayL, grayR)
+
+        # equalise contrast using histogram equalisation  
+        grayL = np.power(grayL, 0.75).astype('uint8');
+        grayR = np.power(grayR, 0.75).astype('uint8');
+
+        equalised_grayL = cv2.equalizeHist(grayL)
+        equalised_grayR = cv2.equalizeHist(grayR)
+
         # compute disparity image from undistorted and rectified stereo images
         # that we have loaded
         # (which for reasons best known to the OpenCV developers is returned scaled by 16)
 
-        disparity = stereoProcessor.compute(grayL, grayR);
-        '''disparity = left_matcher.compute(blurredL, blurredR)  # .astype(np.float32)/16
-        disparity = right_matcher.compute(blurredR, blurredL)  # .astype(np.float32)/16
-        disparity = np.int16(disparity)
-        disparity = np.int16(disparity)
-        filteredDisparity = wls_filter.filter(disparity, blurredL, None, disparity)  # important to put "imgL" here!!!
-
-        filteredDisparity = cv2.normalize(src=filteredDisparity, dst=filteredDisparity, beta=0, alpha=255, norm_type=cv2.NORM_MINMAX);
-        filteredDisparity = np.uint8(filteredDisparity)'''
+        disparity = stereoProcessor.compute(equalised_grayL, equalised_grayR);
         
         # filter out noise and speckles (adjust parameters as needed)
 
@@ -377,7 +390,7 @@ for filename_left in left_file_list:
         results = net.forward(output_layer_names)
 
         # remove the bounding boxes with low confidence
-        classIDs, confidences, boxes = postprocess(cropped_imgL, results, confThreshold, nmsThreshold)
+        classIDs, confidences, boxes = postprocess(imgL, results, confThreshold, nmsThreshold)
 
         distances = []
         # draw resulting detections on image
@@ -425,11 +438,13 @@ for filename_left in left_file_list:
         # crop - c
         # pause - space
 
-        key = cv2.waitKey(40 * (not(pause_playback))) & 0xFF; # wait 40ms (i.e. 1000ms / 25 fps = 40 ms)
+
+        key = cv2.waitKey()
+        #key = cv2.waitKey(40 * (not(pause_playback))) & 0xFF; # wait 40ms (i.e. 1000ms / 25 fps = 40 ms)
         if (key == ord('x')):       # exit
             break; # exit
         elif (key == ord('s')):     # save
-            cv2.imwrite("sgbm-disparty.png", disparity_scaled);
+            cv2.imwrite("sgbm-disparty.png", disparity);
             cv2.imwrite("left.png", imgL);
             cv2.imwrite("right.png", imgR);
         elif (key == ord('c')):     # crop
