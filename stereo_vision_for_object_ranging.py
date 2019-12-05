@@ -377,11 +377,28 @@ for filename_left in left_file_list:
         #cv2.imshow('right image', imgR)
         print();
 
+        #equalised_grayL = cv2.equalizeHist(grayL)
+        #equalised_grayR = cv2.equalizeHist(grayR)
+
+        labL = cv2.cvtColor(imgL, cv2.COLOR_BGR2LAB)
+        labR = cv2.cvtColor(imgR, cv2.COLOR_BGR2LAB)
+        labL_planes = cv2.split(labL)
+        labR_planes = cv2.split(labR)
+
+        clahe = cv2.createCLAHE(clipLimit=2, tileGridSize=(8, 8))
+        labL_planes[0] = clahe.apply(labL_planes[0])
+        labR_planes[0] = clahe.apply(labR_planes[0])
+        labL = cv2.merge(labL_planes)
+        labR = cv2.merge(labR_planes)
+
+        claheL = cv2.cvtColor(labL, cv2.COLOR_LAB2BGR)
+        claheR = cv2.cvtColor(labR, cv2.COLOR_LAB2BGR)
+
         # crop the main car out using bitwise and to stop it from being detected in multiple images
         cropped_car_img = cv2.imread("cropped_car.png", cv2.IMREAD_COLOR)
-        cropped_imgL = cv2.bitwise_and(imgL, cropped_car_img)
-        cropped_imgR = cv2.bitwise_and(imgR, cropped_car_img)
-        
+        cropped_imgL = cv2.bitwise_and(claheL, cropped_car_img)
+        cropped_imgR = cv2.bitwise_and(claheR, cropped_car_img)
+
         # remember to convert to grayscale (as the disparity matching works on grayscale)
         # N.B. need to do for both as both are 3-channel images
 
@@ -390,22 +407,14 @@ for filename_left in left_file_list:
 
         #disparity = WLS_filter(grayL, grayR)
 
-        # equalise contrast using histogram equalisation  
         grayL = np.power(grayL, 0.75).astype('uint8');
         grayR = np.power(grayR, 0.75).astype('uint8');
-
-        #equalised_grayL = cv2.equalizeHist(grayL)
-        #equalised_grayR = cv2.equalizeHist(grayR)
-
-        clahe = cv2.createCLAHE()
-        clahe_grayL = clahe.apply(grayL)
-        clahe_grayR = clahe.apply(grayR)
 
         # compute disparity image from undistorted and rectified stereo images
         # that we have loaded
         # (which for reasons best known to the OpenCV developers is returned scaled by 16)
 
-        disparity = stereoProcessor.compute(clahe_grayL, clahe_grayR);
+        disparity = stereoProcessor.compute(grayL, grayR);
         
         # filter out noise and speckles (adjust parameters as needed)
 
@@ -444,7 +453,7 @@ for filename_left in left_file_list:
         results = net.forward(output_layer_names)
 
         # remove the bounding boxes with low confidence
-        classIDs, confidences, boxes = postprocess(imgL, results, confThreshold, nmsThreshold)
+        classIDs, confidences, boxes = postprocess(claheL, results, confThreshold, nmsThreshold)
 
         distances = []
         # draw resulting detections on image
@@ -456,11 +465,11 @@ for filename_left in left_file_list:
                 width = box[2]
                 height = box[3]
                 
-                median_disparity = ORB(imgL, imgR, left, top, left + width, top + height)
-                if median_disparity != None:
-                    distance = drawSparsePred(imgL, classes[classIDs[detected_object]], left, top, left + width, top + height, (255, 178, 50), median_disparity)
+                #median_disparity = ORB(claheL, claheR, left, top, left + width, top + height)
+                #if median_disparity != None:
+                #    distance = drawSparsePred(claheL, classes[classIDs[detected_object]], left, top, left + width, top + height, (255, 178, 50), median_disparity)
                 # collect distances for each scene object
-                #distance = drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
+                distance = drawPred(claheL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
                 if distance != -1:
                    distances.append(distance)
 
@@ -479,8 +488,7 @@ for filename_left in left_file_list:
         cv2.putText(imgL, label, (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255))
 
         # display image
-
-        cv2.imshow(windowName, imgL)
+        cv2.imshow(windowName, claheL)
 
         # stop the timer and convert to ms. (to see how long processing and display takes)
         stop_t = ((cv2.getTickCount() - start_t)/cv2.getTickFrequency()) * 1000
