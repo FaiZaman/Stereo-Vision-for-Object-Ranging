@@ -128,15 +128,16 @@ def ORB(imgL, imgR, left, top, right, bottom):
         # display keypoints on the image
         cropped_region_with_features = cv2.drawKeypoints(detected_boxL, left_keypoints, None, (255,0,0), 4)
 
-        # display features on cropped region
-        cv2.imshow("Selected features", cropped_region_with_features)
-
     if detected:
 
         # detect and match features from current image
         right_keypoints, descriptors = feature_object.detectAndCompute(detected_boxR, None)
 
         matches = []
+
+        if descriptors is None:
+            descriptors = []
+
         if (len(descriptors) > 0):
                 matches = matcher.knnMatch(descriptors_cropped_region, trainDescriptors = descriptors, k = 2)
 
@@ -162,19 +163,18 @@ def ORB(imgL, imgR, left, top, right, bottom):
                         good_matches.append(m)
                         disparity.append(abs((left_y + left) - right_y))
 
-            #print(disparity)
-            #if disparity == []:
-             #   return 0
-            median_disparity = statistics.median(disparity)
         except ValueError:
             print("caught error - no matches from current frame")
 
         draw_params = dict(matchColor = (0,255,0), singlePointColor = (255,0,0), flags = 0)
         display_matches = cv2.drawMatches(detected_boxL, left_keypoints, detected_boxR, right_keypoints, good_matches, None, **draw_params)
-        cv2.imshow("Feature Matches", display_matches)
+        #cv2.imshow("Feature Matches", display_matches)
 
-        #print(median_disparity)
-        #return median_disparity
+        if disparity == []:
+            return 0
+        median_disparity = statistics.median(disparity)
+
+        return median_disparity
 
 
 def drawSparsePred(image, class_name, left, top, right, bottom, colour, disparity_value):
@@ -203,6 +203,7 @@ def drawSparsePred(image, class_name, left, top, right, bottom, colour, disparit
         (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
     cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
 
+    return distance
 
 
 # Draw the predicted bounding box on the specified image
@@ -456,11 +457,10 @@ for filename_left in left_file_list:
                 height = box[3]
                 
                 median_disparity = ORB(imgL, imgR, left, top, left + width, top + height)
-                #print(median_disparity)
-
-                #distance = drawSparsePred(imgL, classes[classIDs[detected_object]], left, top, left + width, top + height, (255, 178, 50), median_disparity)
+                if median_disparity != None:
+                    distance = drawSparsePred(imgL, classes[classIDs[detected_object]], left, top, left + width, top + height, (255, 178, 50), median_disparity)
                 # collect distances for each scene object
-                distance = drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
+                #distance = drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
                 if distance != -1:
                    distances.append(distance)
 
