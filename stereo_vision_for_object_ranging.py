@@ -29,7 +29,7 @@ args = parser.parse_args()
 # set this to a file timestamp to start from (empty is first example - outside lab)
 # e.g. set to 1506943191.487683 for the end of the Bailey, just as the vehicle turns
 
-skip_forward_file_pattern = "1506942604.475373_L.png"; # set to timestamp to skip forward to
+skip_forward_file_pattern = ""#"1506942604.475373_L.png"; # set to timestamp to skip forward to
 
 crop_disparity = False; # display full or cropped disparity image
 pause_playback = False; # pause until key press after each image
@@ -117,8 +117,10 @@ def ORB(left, top, right, bottom):
 
     if h > 0 and w > 0:
 
+        # pad the box
         detected = True
-
+        detected_box = cv2.copyMakeBorder(detected_box, 100, 100, 100, 100, 0, None, 0)
+        
         # detect features and compute associated descriptor vectors
         keypoints_cropped_region, descriptors_cropped_region = feature_object.detectAndCompute(detected_box, None)
 
@@ -129,6 +131,9 @@ def ORB(left, top, right, bottom):
         cv2.imshow("Selected features", cropped_region_with_features)
 
     if detected:
+
+        new_imgR = imgR[top:bottom]
+        new_imgR = cv2.copyMakeBorder(new_imgR, 100, 0, 0, 0, 0, None, 0)
 
         # detect and match features from current image
         keypoints, descriptors = feature_object.detectAndCompute(greyR, None)
@@ -152,9 +157,10 @@ def ORB(left, top, right, bottom):
             print("caught error - no matches from current frame")
 
         draw_params = dict(matchColor = (0,255,0), singlePointColor = (255,0,0), flags = 0)
-        display_matches = cv2.drawMatches(detected_box, keypoints_cropped_region, imgR, keypoints, good_matches, None, **draw_params)
+        display_matches = cv2.drawMatches(detected_box, keypoints_cropped_region, new_imgR, keypoints, good_matches, None, **draw_params)
         cv2.imshow("Feature Matches", display_matches)
-
+        cv2.imshow("Padded detected box", detected_box)
+        cv2.waitKey()
 
 # Draw the predicted bounding box on the specified image
 # image: image detection performed on
@@ -344,14 +350,18 @@ for filename_left in left_file_list:
         grayL = np.power(grayL, 0.75).astype('uint8');
         grayR = np.power(grayR, 0.75).astype('uint8');
 
-        equalised_grayL = cv2.equalizeHist(grayL)
-        equalised_grayR = cv2.equalizeHist(grayR)
+        #equalised_grayL = cv2.equalizeHist(grayL)
+        #equalised_grayR = cv2.equalizeHist(grayR)
+
+        clahe = cv2.createCLAHE()
+        clahe_grayL = clahe.apply(grayL)
+        clahe_grayR = clahe.apply(grayR)
 
         # compute disparity image from undistorted and rectified stereo images
         # that we have loaded
         # (which for reasons best known to the OpenCV developers is returned scaled by 16)
 
-        disparity = stereoProcessor.compute(equalised_grayL, equalised_grayR);
+        disparity = stereoProcessor.compute(clahe_grayL, clahe_grayR);
         
         # filter out noise and speckles (adjust parameters as needed)
 
@@ -406,6 +416,7 @@ for filename_left in left_file_list:
                 distance = drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
                 if distance != -1:
                     distances.append(distance)
+                ORB(left, top, left + width, top + height)
 
         # print nearest scene object
         print(filename_left)
@@ -439,8 +450,8 @@ for filename_left in left_file_list:
         # pause - space
 
 
-        key = cv2.waitKey()
-        #key = cv2.waitKey(40 * (not(pause_playback))) & 0xFF; # wait 40ms (i.e. 1000ms / 25 fps = 40 ms)
+        #key = cv2.waitKey()
+        key = cv2.waitKey(40 * (not(pause_playback))) & 0xFF; # wait 40ms (i.e. 1000ms / 25 fps = 40 ms)
         if (key == ord('x')):       # exit
             break; # exit
         elif (key == ord('s')):     # save
