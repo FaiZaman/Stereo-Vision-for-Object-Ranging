@@ -6,6 +6,7 @@ import sys
 import argparse
 import math
 import numpy as np
+import statistics
 from sklearn.preprocessing import normalize
 
 master_path_to_dataset = "TTBB-durham-02-10-17-sub10/";
@@ -88,7 +89,7 @@ def WLS_filter(greyL, greyR):
     return filteredDisparity
 
 
-def ORB(left, top, right, bottom):
+def ORB(imgL, imgR, left, top, right, bottom):
 
     detected = False
 
@@ -107,36 +108,33 @@ def ORB(left, top, right, bottom):
     else:
         matcher = cv2.BFMatcher()
 
-    # convert to grayscale
-    greyL = cv2.cvtColor(imgL, cv2.COLOR_BGR2GRAY)
-    greyR = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
-
     # obtain yolo box as image 
-    detected_box = greyL[top:bottom, left:right].copy() # not sure about this
-    h, w = detected_box.shape
+    detected_boxL = imgL[top:bottom, left:right].copy()
+    detected_boxR = imgR[top:bottom].copy()
+    h, w, c = detected_boxL.shape
+
+    # pad the boxes if they're too small
+    if h < 80 or w < 80:
+        detected_boxL = cv2.copyMakeBorder(detected_boxL, 100, 100, 100, 100, cv2.BORDER_CONSTANT, None, (0, 0, 0))
+        detected_boxR = cv2.copyMakeBorder(detected_boxR, 100, 100, 100, 100, cv2.BORDER_CONSTANT, None, (0, 0, 0))
 
     if h > 0 and w > 0:
-
-        # pad the box
+            
         detected = True
-        detected_box = cv2.copyMakeBorder(detected_box, 100, 100, 100, 100, 0, None, 0)
         
         # detect features and compute associated descriptor vectors
-        keypoints_cropped_region, descriptors_cropped_region = feature_object.detectAndCompute(detected_box, None)
+        left_keypoints, descriptors_cropped_region = feature_object.detectAndCompute(detected_boxL, None)
 
         # display keypoints on the image
-        cropped_region_with_features = cv2.drawKeypoints(detected_box, keypoints_cropped_region, None, (255,0,0), 4)
+        cropped_region_with_features = cv2.drawKeypoints(detected_boxL, left_keypoints, None, (255,0,0), 4)
 
         # display features on cropped region
         cv2.imshow("Selected features", cropped_region_with_features)
 
     if detected:
 
-        new_imgR = imgR[top:bottom]
-        new_imgR = cv2.copyMakeBorder(new_imgR, 100, 0, 0, 0, 0, None, 0)
-
         # detect and match features from current image
-        keypoints, descriptors = feature_object.detectAndCompute(greyR, None)
+        right_keypoints, descriptors = feature_object.detectAndCompute(detected_boxR, None)
 
         matches = []
         if (len(descriptors) > 0):
@@ -148,19 +146,64 @@ def ORB(left, top, right, bottom):
         # using the matching distances of the first and second matches
 
         good_matches = []
+        disparity = []
+        median_disparity = 0
         try:
             for (m, n) in matches:
-                if m.distance < 0.7 * n.distance:
-                    good_matches.append(m)
-                    #queryIdx trainIdx
+                left_coord = left_keypoints[m.queryIdx].pt
+                right_coord = right_keypoints[m.trainIdx].pt
+                left_x = left_coord[1]
+                left_y = left_coord[0]
+                right_x = right_coord[1]
+                right_y = right_coord[0]
+
+                if left_x == right_x:
+                    if m.distance < 0.7 * n.distance:
+                        good_matches.append(m)
+                        disparity.append(abs((left_y + left) - right_y))
+
+            #print(disparity)
+            #if disparity == []:
+             #   return 0
+            median_disparity = statistics.median(disparity)
         except ValueError:
             print("caught error - no matches from current frame")
 
         draw_params = dict(matchColor = (0,255,0), singlePointColor = (255,0,0), flags = 0)
-        display_matches = cv2.drawMatches(detected_box, keypoints_cropped_region, new_imgR, keypoints, good_matches, None, **draw_params)
+        display_matches = cv2.drawMatches(detected_boxL, left_keypoints, detected_boxR, right_keypoints, good_matches, None, **draw_params)
         cv2.imshow("Feature Matches", display_matches)
-        cv2.imshow("Padded detected box", detected_box)
-        cv2.waitKey()
+
+        #print(median_disparity)
+        #return median_disparity
+
+
+def drawSparsePred(image, class_name, left, top, right, bottom, colour, disparity_value):
+
+    # Draw a bounding box
+    cv2.rectangle(image, (left, top), (right, bottom), colour, 2)
+
+    # calculate the distance according to the stereo depth formula
+    if disparity_value == 0:
+        label = '%s' % (class_name)
+        labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        top = max(top, labelSize[1])
+        cv2.rectangle(image, (left, top - labelSize[1]),
+            (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
+        cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
+        return -1
+    distance = round(((focal_length * baseline)/disparity_value), 2)
+
+    # construct label
+    label = '%s: %.2f%s' % (class_name, distance, "m")
+
+    # Display the label at the top of the bounding box
+    labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+    top = max(top, labelSize[1])
+    cv2.rectangle(image, (left, top - labelSize[1]),
+        (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
+    cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
+
+
 
 # Draw the predicted bounding box on the specified image
 # image: image detection performed on
@@ -412,11 +455,14 @@ for filename_left in left_file_list:
                 width = box[2]
                 height = box[3]
                 
+                median_disparity = ORB(imgL, imgR, left, top, left + width, top + height)
+                #print(median_disparity)
+
+                #distance = drawSparsePred(imgL, classes[classIDs[detected_object]], left, top, left + width, top + height, (255, 178, 50), median_disparity)
                 # collect distances for each scene object
                 distance = drawPred(imgL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
                 if distance != -1:
-                    distances.append(distance)
-                ORB(left, top, left + width, top + height)
+                   distances.append(distance)
 
         # print nearest scene object
         print(filename_left)
@@ -448,7 +494,6 @@ for filename_left in left_file_list:
         # save - s
         # crop - c
         # pause - space
-
 
         #key = cv2.waitKey()
         key = cv2.waitKey(40 * (not(pause_playback))) & 0xFF; # wait 40ms (i.e. 1000ms / 25 fps = 40 ms)
