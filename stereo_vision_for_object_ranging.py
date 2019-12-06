@@ -8,18 +8,21 @@ import math
 import numpy as np
 import statistics
 import yolo
+import drawing as draw
+import WLS_filter as WLS
 from sklearn.preprocessing import normalize
 
 master_path_to_dataset = "TTBB-durham-02-10-17-sub10/";
 directory_to_cycle_left = "left-images";     # edit this if needed
 directory_to_cycle_right = "right-images";   # edit this if needed
 
-focal_length = 399.9745178222656 # in pixels
-baseline = 0.2090607502 # in meters
-
 vehicles = ["person", "car", "bicycle", "truck", "motorbike", "aeroplane", "bus", "truck", "boat"]
 
 keep_processing = True
+
+# set to True to apply each - do not set both to True at the same time
+WLS_on = True
+sparse_ORB = False
 
 # parse command line arguments for camera ID or video file
 parser = argparse.ArgumentParser(description='Perform ' + sys.argv[0] + ' example operation on incoming camera/video image')
@@ -50,45 +53,6 @@ left_file_list = sorted(os.listdir(full_path_directory_left));
 max_disparity = 128;
 stereoProcessor = cv2.StereoSGBM_create(0, max_disparity, 21);
 window_size = 3
-
-left_matcher = cv2.StereoSGBM_create(
-    minDisparity = 0,
-    numDisparities = 160,             # max_disp has to be dividable by 16 f. E. HH 192, 256
-    blockSize = 5,
-    P1 = 8 * 3 * window_size ** 2,    # wsize default 3; 5; 7 for SGBM reduced size image; 15 for SGBM full size image (1300px and above); 5 Works nicely
-    P2 = 32 * 3 * window_size ** 2,
-    disp12MaxDiff = 1,
-    uniquenessRatio = 15,
-    speckleWindowSize = 0,
-    speckleRange = 2,
-    preFilterCap = 63,
-    mode = cv2.STEREO_SGBM_MODE_SGBM_3WAY
-)
-
-right_matcher = cv2.ximgproc.createRightMatcher(left_matcher)
-
-# WLS Filter params
-lmbda = 80000
-sigma = 1.2
-visual_multiplier = 1.0
- 
-# apply WLS filter
-wls_filter = cv2.ximgproc.createDisparityWLSFilter(matcher_left=left_matcher)
-wls_filter.setLambda(lmbda)
-wls_filter.setSigmaColor(sigma)
-
-def WLS_filter(greyL, greyR):
-
-    disparity_left = left_matcher.compute(greyL, greyR)  # .astype(np.float32)/16
-    disparity_right = right_matcher.compute(greyR, greyL)  # .astype(np.float32)/16
-    disparity_left = np.int16(disparity_left)
-    disparity_right = np.int16(disparity_right)
-    filteredDisparity = wls_filter.filter(disparity_left, greyL, None, disparity_right)  # important to put "imgL" here!!!
-
-    filteredDisparity = cv2.normalize(src=filteredDisparity, dst=filteredDisparity, beta=0, alpha=255, norm_type=cv2.NORM_MINMAX);
-    filteredDisparity = np.uint8(filteredDisparity)
-    return filteredDisparity
-
 
 def ORB(imgL, imgR, left, top, right, bottom):
 
@@ -178,81 +142,6 @@ def ORB(imgL, imgR, left, top, right, bottom):
         return median_disparity
 
 
-def drawSparsePred(image, class_name, left, top, right, bottom, colour, disparity_value):
-
-    # Draw a bounding box
-    cv2.rectangle(image, (left, top), (right, bottom), colour, 2)
-
-    # calculate the distance according to the stereo depth formula
-    if disparity_value == 0:
-        label = '%s' % (class_name)
-        labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        top = max(top, labelSize[1])
-        cv2.rectangle(image, (left, top - labelSize[1]),
-            (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
-        cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
-        return -1
-    distance = round(((focal_length * baseline)/disparity_value), 2)
-
-    # construct label
-    label = '%s: %.2f%s' % (class_name, distance, "m")
-
-    # Display the label at the top of the bounding box
-    labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-    top = max(top, labelSize[1])
-    cv2.rectangle(image, (left, top - labelSize[1]),
-        (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
-    cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
-
-    return distance
-
-
-# Draw the predicted bounding box on the specified image
-# image: image detection performed on
-# class_name: string name of detected object_detection
-# left, top, right, bottom: rectangle parameters for detection
-# colour: to draw detection rectangle in
-
-def drawPred(image, class_name, left, top, right, bottom, colour, disparity_img):
-
-    # Draw a bounding box
-    cv2.rectangle(image, (left, top), (right, bottom), colour, 2)
-    centre_x = math.floor((left + right)/2)
-    centre_y = math.floor((top + bottom)/2)
-
-    # crop the disparity image and take the median 
-    width = right - left
-    height = bottom - top
-    cropped_disparity = disparity_img[top + int(height/3):bottom - int(height/3), left + int(width/3):right - int(width/3)]
-    median_disparity = np.median(cropped_disparity)
-
-    #if classes[classIDs[detected_object]] != "person": take bottom half of vehicle
-     #   centre_y = centre_y + math.floor(bottom/4)
-
-    # calculate the distance according to the stereo depth formula
-    disparity_value = disparity_img[centre_y][centre_x]
-    if median_disparity == 0:
-        label = '%s' % (class_name)
-        labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        top = max(top, labelSize[1])
-        cv2.rectangle(image, (left, top - labelSize[1]),
-            (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
-        cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
-        return -1
-    distance = round(((focal_length * baseline)/median_disparity), 2)
-
-    # construct label
-    label = '%s: %.2f%s' % (class_name, distance, "m")
-
-    # Display the label at the top of the bounding box
-    labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-    top = max(top, labelSize[1])
-    cv2.rectangle(image, (left, top - labelSize[1]),
-        (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
-    cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
-
-    return distance
-
 # get YOLO parameters
 inpWidth, inpHeight, classes, net, output_layer_names = yolo.initialise(args.class_file, args.config_file, args.weights_file)
 
@@ -323,41 +212,40 @@ for filename_left in left_file_list:
         grayL = cv2.cvtColor(cropped_imgL, cv2.COLOR_BGR2GRAY);
         grayR = cv2.cvtColor(cropped_imgR, cv2.COLOR_BGR2GRAY);
 
-        #disparity = WLS_filter(grayL, grayR)
+        if WLS_on:
+            left_matcher, right_matcher = WLS.create_matcher(window_size)
+            disparity_scaled = WLS.filter(left_matcher, right_matcher, claheL, claheR)
+        else:
+            grayL = np.power(grayL, 0.75).astype('uint8');
+            grayR = np.power(grayR, 0.75).astype('uint8');
 
-        grayL = np.power(grayL, 0.75).astype('uint8');
-        grayR = np.power(grayR, 0.75).astype('uint8');
+            # compute disparity image from undistorted and rectified stereo images
+            # that we have loaded
+            # (which for reasons best known to the OpenCV developers is returned scaled by 16)
 
-        # compute disparity image from undistorted and rectified stereo images
-        # that we have loaded
-        # (which for reasons best known to the OpenCV developers is returned scaled by 16)
+            disparity = stereoProcessor.compute(grayL, grayR);
+            
+            # filter out noise and speckles (adjust parameters as needed)
 
-        disparity = stereoProcessor.compute(grayL, grayR);
-        
-        # filter out noise and speckles (adjust parameters as needed)
+            dispNoiseFilter = 5; # increase for more agressive filtering
+            cv2.filterSpeckles(disparity, 0, 4000, max_disparity - dispNoiseFilter);
 
-        dispNoiseFilter = 5; # increase for more agressive filtering
-        cv2.filterSpeckles(disparity, 0, 4000, max_disparity - dispNoiseFilter);
+            # scale the disparity to 8-bit for viewing
+            # divide by 16 and convert to 8-bit image (then range of values should
+            # be 0 -> max_disparity) but in fact is (-1 -> max_disparity - 1)
+            # so we fix this also using a initial threshold between 0 and max_disparity
+            # as disparity=-1 means no disparity available
 
-        # scale the disparity to 8-bit for viewing
-        # divide by 16 and convert to 8-bit image (then range of values should
-        # be 0 -> max_disparity) but in fact is (-1 -> max_disparity - 1)
-        # so we fix this also using a initial threshold between 0 and max_disparity
-        # as disparity=-1 means no disparity available
+            _, disparity = cv2.threshold(disparity, 0, max_disparity * 16, cv2.THRESH_TOZERO);
+            disparity_scaled = (disparity / 16.).astype(np.uint8);
 
-        _, disparity = cv2.threshold(disparity, 0, max_disparity * 16, cv2.THRESH_TOZERO);
-        disparity_scaled = (disparity / 16.).astype(np.uint8);
+            # crop disparity to chop out left part where there are with no disparity
+            # as this area is not seen by both cameras and also
+            # chop out the bottom area (where we see the front of car bonnet)
 
-        # crop disparity to chop out left part where there are with no disparity
-        # as this area is not seen by both cameras and also
-        # chop out the bottom area (where we see the front of car bonnet)
-
-        if (crop_disparity):
-            width = np.size(disparity_scaled, 1);
-            disparity_scaled = disparity_scaled[0:390,135:width];
-
-        # display image (scaling it to the full 0->255 range based on the number
-        # of disparities in use for the stereo part)
+            if (crop_disparity):
+                width = np.size(disparity_scaled, 1);
+                disparity_scaled = disparity_scaled[0:390,135:width];
 
         #cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8));
 
@@ -373,11 +261,13 @@ for filename_left in left_file_list:
                 width = box[2]
                 height = box[3]
                 
-                #median_disparity = ORB(claheL, claheR, left, top, left + width, top + height)
-                #if median_disparity != None:
-                #    distance = drawSparsePred(claheL, classes[classIDs[detected_object]], left, top, left + width, top + height, (255, 178, 50), median_disparity)
-                # collect distances for each scene object
-                distance = drawPred(claheL, classes[classIDs[detected_object]], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
+                if sparse_ORB:  # run sparse
+                    median_disparity = ORB(claheL, claheR, left, top, left + width, top + height)
+                    if median_disparity != None:
+                        distance = draw.drawSparsePred(claheL, classes[classIDs[detected_object]], left, top, left + width, top + height, (255, 178, 50), median_disparity)
+                else:   # run dense
+                    distance = draw.drawPred(claheL, classes[classIDs[detected_object]], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
+                
                 if distance != -1:
                    distances.append(distance)
 
@@ -388,12 +278,6 @@ for filename_left in left_file_list:
             print(filename_right + " : nearest detected scene object (" + str(min_distance) + "m)")
         else:
             print(filename_right + " : nearest detected scene object (" + "0m)")
-
-
-        # Put efficiency information. The function getPerfProfile returns the overall time for inference(t) and the timings for each of the layers(in layersTimes)
-        t, _ = net.getPerfProfile()
-        label = 'Inference time: %.2f ms' % (t * 1000.0 / cv2.getTickFrequency())
-        cv2.putText(imgL, label, (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255))
 
         # display image
         cv2.imshow(windowName, claheL)
