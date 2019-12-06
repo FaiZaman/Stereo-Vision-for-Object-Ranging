@@ -29,8 +29,8 @@ args = parser.parse_args()
 # set this to a file timestamp to start from (empty is first example - outside lab)
 # e.g. set to 1506943191.487683 for the end of the Bailey, just as the vehicle turns
 
-skip_forward_file_pattern = "1506942594.475307_L.png"; # set to timestamp to skip forward to
-
+skip_forward_file_pattern = ""; # set to timestamp to skip forward to
+    
 #####################################################################
 
 # resolve full directory location of data set for left / right images
@@ -158,6 +158,7 @@ for filename_left in left_file_list:
     # the CIS computers add ._ to the start of the image filenames for some reason - if yours does not do this, get rid of the following two lines
     filename_left = filename_left[2:len(filename_left)]
     filename_right = filename_right[2:len(filename_right)]
+    
     full_path_filename_left = os.path.join(full_path_directory_left, filename_left);
     full_path_filename_right = os.path.join(full_path_directory_right, filename_right);
 
@@ -227,7 +228,7 @@ for filename_left in left_file_list:
             _, disparity = cv2.threshold(disparity, 0, max_disparity * 16, cv2.THRESH_TOZERO);
             disparity_scaled = (disparity / 16.).astype(np.uint8);
 
-        #cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8));
+        cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8));
 
         # get the objects detected and their names and coordinates from YOLO
         classIDs, boxes = yolo.create_and_remove(cropped_imgL, claheL, inpWidth, inpHeight, net, output_layer_names)
@@ -268,9 +269,9 @@ for filename_left in left_file_list:
 
         # start the event loop + detect specific key strokes
         # wait 40ms or less depending on processing time taken (i.e. 1000ms / 25 fps = 40 ms)
-        #key = cv2.waitKey(max(2, 40 - int(math.ceil(stop_t)))) & 0xFF
+        key = cv2.waitKey(max(2, 40 - int(math.ceil(stop_t)))) & 0xFF
 
-        key = cv2.waitKey()
+        #key = cv2.waitKey()
     else:
             print("-- files skipped (perhaps one is missing or not PNG)");
             print();
