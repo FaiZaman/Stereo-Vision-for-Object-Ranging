@@ -7,6 +7,7 @@ import argparse
 import math
 import numpy as np
 import statistics
+import yolo
 from sklearn.preprocessing import normalize
 
 master_path_to_dataset = "TTBB-durham-02-10-17-sub10/";
@@ -30,7 +31,7 @@ args = parser.parse_args()
 # set this to a file timestamp to start from (empty is first example - outside lab)
 # e.g. set to 1506943191.487683 for the end of the Bailey, just as the vehicle turns
 
-skip_forward_file_pattern = ""#"1506942604.475373_L.png"; # set to timestamp to skip forward to
+skip_forward_file_pattern = ""; # set to timestamp to skip forward to
 
 crop_disparity = False; # display full or cropped disparity image
 pause_playback = False; # pause until key press after each image
@@ -212,7 +213,7 @@ def drawSparsePred(image, class_name, left, top, right, bottom, colour, disparit
 # left, top, right, bottom: rectangle parameters for detection
 # colour: to draw detection rectangle in
 
-def drawPred(image, class_name, confidence, left, top, right, bottom, colour, disparity_img):
+def drawPred(image, class_name, left, top, right, bottom, colour, disparity_img):
 
     # Draw a bounding box
     cv2.rectangle(image, (left, top), (right, bottom), colour, 2)
@@ -252,91 +253,8 @@ def drawPred(image, class_name, confidence, left, top, right, bottom, colour, di
 
     return distance
 
-
-# Remove the bounding boxes with low confidence using non-maxima suppression
-# image: image detection performed on
-# results: output from YOLO CNN network
-# threshold_confidence: threshold on keeping detection
-# threshold_nms: threshold used in non maximum suppression
-
-def postprocess(image, results, threshold_confidence, threshold_nms):
-    frameHeight = image.shape[0]
-    frameWidth = image.shape[1]
-
-    # Scan through all the bounding boxes output from the network and..
-    # 1. keep only the ones with high confidence scores.
-    # 2. assign the box class label as the class with the highest score.
-    # 3. construct a list of bounding boxes, class labels and confidence scores
-
-    classIds = []
-    confidences = []
-    boxes = []
-    for result in results:
-        for detection in result:
-            scores = detection[5:]
-            classId = np.argmax(scores)
-            confidence = scores[classId]
-            if confidence > threshold_confidence:
-                center_x = int(detection[0] * frameWidth)
-                center_y = int(detection[1] * frameHeight)
-                width = int(detection[2] * frameWidth)
-                height = int(detection[3] * frameHeight)
-                left = int(center_x - width / 2)
-                top = int(center_y - height / 2)
-                classIds.append(classId)
-                confidences.append(float(confidence))
-                boxes.append([left, top, width, height])
-
-    # Perform non maximum suppression to eliminate redundant overlapping boxes with
-    # lower confidences
-    classIds_nms = []
-    confidences_nms = []
-    boxes_nms = []
-
-    indices = cv2.dnn.NMSBoxes(boxes, confidences, threshold_confidence, threshold_nms)
-    for i in indices:
-        i = i[0]
-        classIds_nms.append(classIds[i])
-        confidences_nms.append(confidences[i])
-        boxes_nms.append(boxes[i])
-
-    # return post processed lists of classIds, confidences and bounding boxes
-    return (classIds_nms, confidences_nms, boxes_nms)
-
-
-def getOutputsNames(net):
-    # Get the names of all the layers in the network
-    layersNames = net.getLayerNames()
-    # Get the names of the output layers, i.e. the layers with unconnected outputs
-    return [layersNames[i[0] - 1] for i in net.getUnconnectedOutLayers()]
-    
-
-# init YOLO CNN object detection model
-
-confThreshold = 0.5  # Confidence threshold
-nmsThreshold = 0.4   # Non-maximum suppression threshold
-inpWidth = 416       # Width of network's input image
-inpHeight = 416      # Height of network's input image
-
-# Load names of classes from file
-
-classesFile = args.class_file
-classes = None
-with open(classesFile, 'rt') as f:
-    classes = f.read().rstrip('\n').split('\n')
-
-# load configuration and weight files for the model and load the network using them
-
-net = cv2.dnn.readNetFromDarknet(args.config_file, args.weights_file)
-output_layer_names = getOutputsNames(net)
-
- # defaults DNN_BACKEND_INFERENCE_ENGINE if Intel Inference Engine lib available or DNN_BACKEND_OPENCV otherwise
-net.setPreferableBackend(cv2.dnn.DNN_BACKEND_DEFAULT)
-
-# change to cv2.dnn.DNN_TARGET_CPU (slower) if this causes issues (should fail gracefully if OpenCL not available)
-net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL)
-
-# define display window name + trackbar
+# get YOLO parameters
+inpWidth, inpHeight, classes, net, output_layer_names = yolo.initialise(args.class_file, args.config_file, args.weights_file)
 
 windowName = 'Stereo Vision for Object Ranging'
 cv2.namedWindow(windowName, cv2.WINDOW_NORMAL)
@@ -443,17 +361,7 @@ for filename_left in left_file_list:
 
         #cv2.imshow("disparity", (disparity_scaled * (256. / max_disparity)).astype(np.uint8));
 
-        # create a 4D tensor (OpenCV 'blob') from image frame (pixels scaled 0->1, image resized)
-        tensor = cv2.dnn.blobFromImage(cropped_imgL, 1/255, (inpWidth, inpHeight), [0,0,0], 1, crop=False)
-
-        # set the input to the CNN network
-        net.setInput(tensor)
-
-        # runs forward inference to get output of the final output layers
-        results = net.forward(output_layer_names)
-
-        # remove the bounding boxes with low confidence
-        classIDs, confidences, boxes = postprocess(claheL, results, confThreshold, nmsThreshold)
+        classIDs, boxes = yolo.create_and_remove(cropped_imgL, claheL, inpWidth, inpHeight, net, output_layer_names)
 
         distances = []
         # draw resulting detections on image
@@ -469,7 +377,7 @@ for filename_left in left_file_list:
                 #if median_disparity != None:
                 #    distance = drawSparsePred(claheL, classes[classIDs[detected_object]], left, top, left + width, top + height, (255, 178, 50), median_disparity)
                 # collect distances for each scene object
-                distance = drawPred(claheL, classes[classIDs[detected_object]], confidences[detected_object], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
+                distance = drawPred(claheL, classes[classIDs[detected_object]], left, top, left + width, top + height, (255, 178, 50), disparity_scaled)
                 if distance != -1:
                    distances.append(distance)
 
@@ -504,17 +412,6 @@ for filename_left in left_file_list:
         # pause - space
 
         #key = cv2.waitKey()
-        key = cv2.waitKey(40 * (not(pause_playback))) & 0xFF; # wait 40ms (i.e. 1000ms / 25 fps = 40 ms)
-        if (key == ord('x')):       # exit
-            break; # exit
-        elif (key == ord('s')):     # save
-            cv2.imwrite("sgbm-disparty.png", disparity);
-            cv2.imwrite("left.png", imgL);
-            cv2.imwrite("right.png", imgR);
-        elif (key == ord('c')):     # crop
-            crop_disparity = not(crop_disparity);
-        elif (key == ord(' ')):     # pause (on next frame)
-            pause_playback = not(pause_playback);
     else:
             print("-- files skipped (perhaps one is missing or not PNG)");
             print();
