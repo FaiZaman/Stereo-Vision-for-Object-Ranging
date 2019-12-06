@@ -1,11 +1,12 @@
 import cv2
 import numpy as np
 
-def create_matcher(window_size):
+def create_matchers(window_size):
 
+    # create and return the left and right matchers
     left_matcher = cv2.StereoSGBM_create(
         minDisparity = 0,
-        numDisparities = 160,             # max_disp has to be dividable by 16 f. E. HH 192, 256
+        numDisparities = 320,             # max_disp has to be dividable by 16 f. E. HH 192, 256
         blockSize = 5,
         P1 = 8 * 3 * window_size ** 2,    # wsize default 3; 5; 7 for SGBM reduced size image; 15 for SGBM full size image (1300px and above); 5 Works nicely
         P2 = 32 * 3 * window_size ** 2,
@@ -28,11 +29,12 @@ def filter(left_matcher, right_matcher, greyL, greyR):
     sigma = 1.2
     visual_multiplier = 1.0
     
-    # apply WLS filter
+    # apply WLS filter params
     wls_filter = cv2.ximgproc.createDisparityWLSFilter(matcher_left=left_matcher)
     wls_filter.setLambda(lmbda)
     wls_filter.setSigmaColor(sigma)
 
+    # get disparity and filter it
     disparity_left = left_matcher.compute(greyL, greyR)  # .astype(np.float32)/16
     disparity_right = right_matcher.compute(greyR, greyL)  # .astype(np.float32)/16
     disparity_left = np.int16(disparity_left)

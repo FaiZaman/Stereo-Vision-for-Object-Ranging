@@ -26,7 +26,7 @@ args = parser.parse_args()
 # set this to a file timestamp to start from (empty is first example - outside lab)
 # e.g. set to 1506943191.487683 for the end of the Bailey, just as the vehicle turns
 
-skip_forward_file_pattern = "1506943191.487683_L.png"; # set to timestamp to skip forward to
+skip_forward_file_pattern = "1506943062.478723_L.png"; # set to timestamp to skip forward to
 
 crop_disparity = False; # display full or cropped disparity image
 pause_playback = False; # pause until key press after each image
@@ -191,8 +191,8 @@ for filename_left in left_file_list:
     # from the left image filename get the correspondoning right image
 
     filename_right = filename_left.replace("_L", "_R");
-    full_path_filename_left = os.path.join(full_path_directory_left, filename_left);
-    full_path_filename_right = os.path.join(full_path_directory_right, filename_right);
+    full_path_filename_left = os.path.join(full_path_directory_left, filename_left[2:len(filename_left)]);
+    full_path_filename_right = os.path.join(full_path_directory_right, filename_right[2:len(filename_right)]);
 
     # check the file is a PNG file (left) and check a correspondoning right image
     # actually exists
