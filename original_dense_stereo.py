@@ -26,7 +26,7 @@ args = parser.parse_args()
 # set this to a file timestamp to start from (empty is first example - outside lab)
 # e.g. set to 1506943191.487683 for the end of the Bailey, just as the vehicle turns
 
-skip_forward_file_pattern = "1506942606.475622_L.png"; # set to timestamp to skip forward to
+skip_forward_file_pattern = "1506943191.487683_L.png"; # set to timestamp to skip forward to
 
 crop_disparity = False; # display full or cropped disparity image
 pause_playback = False; # pause until key press after each image
@@ -328,4 +328,4 @@ for filename_left in left_file_list:
 
 # close all windows
 
-cv2.destroyAllWindows()
+#cv2.destroyAllWindows()
