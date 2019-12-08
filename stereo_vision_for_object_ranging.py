@@ -156,8 +156,8 @@ for filename_left in left_file_list:
     filename_right = filename_left.replace("_L", "_R");
 
     # the CIS computers add ._ to the start of the image filenames for some reason - if yours does not do this, get rid of the following two lines
-    filename_left = filename_left[2:len(filename_left)]
-    filename_right = filename_right[2:len(filename_right)]
+    #filename_left = filename_left[2:len(filename_left)]
+    #filename_right = filename_right[2:len(filename_right)]
     
     full_path_filename_left = os.path.join(full_path_directory_left, filename_left);
     full_path_filename_right = os.path.join(full_path_directory_right, filename_right);

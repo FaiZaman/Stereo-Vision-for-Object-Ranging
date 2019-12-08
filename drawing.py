@@ -30,11 +30,11 @@ def drawPred(image, class_name, left, top, right, bottom, colour, disparity_img)
     # only display object name and not distance if disparity is zero
     if median_disparity == 0:
         label = '%s' % (class_name)
-        labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+        labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
         top = max(top, labelSize[1])
         cv2.rectangle(image, (left, top - labelSize[1]),
             (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
-        cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,0,0), 1)
+        cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 1)
         return -1
     
     # calculate the distance according to the stereo depth formula
@@ -44,11 +44,11 @@ def drawPred(image, class_name, left, top, right, bottom, colour, disparity_img)
     label = '%s: %.1f%s' % (class_name, distance, "m")
 
     # Display the label at the top of the bounding box
-    labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+    labelSize, line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
     top = max(top, labelSize[1])
     cv2.rectangle(image, (left, top - labelSize[1]),
         (left + labelSize[0], top + line), (255, 255, 255), cv2.FILLED)
-    cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,0,0), 1)
+    cv2.putText(image, label, (left, top), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 1)
 
     return distance
 
